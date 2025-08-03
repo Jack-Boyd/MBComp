@@ -166,7 +166,8 @@ bool MBCompAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* MBCompAudioProcessor::createEditor()
 {
-    return new MBCompAudioProcessorEditor (*this);
+    //return new MBCompAudioProcessorEditor (*this);
+    return new juce::GenericAudioProcessorEditor(*this);
 }
 
 //==============================================================================
