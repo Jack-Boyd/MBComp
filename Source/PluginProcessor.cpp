@@ -54,6 +54,7 @@ MBCompAudioProcessor::MBCompAudioProcessor()
     
     LP.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
     HP.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
+    AP.setType(juce::dsp::LinkwitzRileyFilterType::allpass);
 }
 
 MBCompAudioProcessor::~MBCompAudioProcessor()
@@ -133,11 +134,13 @@ void MBCompAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     compressor.prepare(spec);
     LP.prepare(spec);
     HP.prepare(spec);
+    AP.prepare(spec);
     
     for (auto& buffer : filterBuffers)
     {
         buffer.setSize(spec.numChannels, samplesPerBlock);
     }
+    apBuffer.setSize(spec.numChannels, samplesPerBlock);
 }
 
 void MBCompAudioProcessor::releaseResources()
@@ -192,6 +195,7 @@ void MBCompAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     auto cutoff = lowCrossover->get();
     LP.setCutoffFrequency(cutoff);
     HP.setCutoffFrequency(cutoff);
+    AP.setCutoffFrequency(cutoff);
     
     auto fb0Block = juce::dsp::AudioBlock<float>(filterBuffers[0]);
     auto fb1Block = juce::dsp::AudioBlock<float>(filterBuffers[1]);
@@ -205,6 +209,11 @@ void MBCompAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     auto numSamples = buffer.getNumSamples();
     auto numChannels = buffer.getNumChannels();
     
+    apBuffer = buffer;
+    auto apBlock = juce::dsp::AudioBlock<float>(apBuffer);
+    auto apContext = juce::dsp::ProcessContextReplacing<float>(apBlock);
+    AP.process(apContext);
+    
     buffer.clear();
     
     auto addFilterBand = [nc = numChannels, ns = numSamples](auto& inputBuffer, const auto& source)
@@ -217,6 +226,17 @@ void MBCompAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     
     addFilterBand(buffer, filterBuffers[0]);
     addFilterBand(buffer, filterBuffers[1]);
+    
+    if (compressor.bypassed->get())
+    {
+        for (auto ch = 0; ch < numChannels; ++ch)
+        {
+            juce::FloatVectorOperations::multiply(apBuffer.getWritePointer(ch),
+                                                  -1.f,
+                                                  numSamples);
+        }
+        addFilterBand(buffer, apBuffer);
+    }
 }
 
 //==============================================================================
@@ -291,7 +311,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout MBCompAudioProcessor::create
                                                           params.at(Names::Bypassed_Low_Band),
                                                           false));
     
-    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(params.at(Names::Low_Mid_Crossover_Freq)),
+    layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID(params.at(Names::Low_Mid_Crossover_Freq), 1),
                                                            params.at(Names::Low_Mid_Crossover_Freq),
                                                            juce::NormalisableRange<float>(20, 20000, 1, 1),
                                                            500));
