@@ -10,10 +10,8 @@
 
 #include <JuceHeader.h>
 
-namespace Params
-{
-enum Names
-{
+namespace Params {
+enum Names {
     Low_Mid_Crossover_Freq,
     Mid_High_Crossover_Freq,
     
@@ -44,12 +42,13 @@ enum Names
     Solo_Low_Band,
     Solo_Mid_Band,
     Solo_High_Band,
+    
+    Gain_In,
+    Gain_Out,
 };
 
-inline const std::map<Names, juce::String>& GetParams()
-{
-    static std::map<Names, juce::String> params =
-    {
+inline const std::map<Names, juce::String>& GetParams() {
+    static std::map<Names, juce::String> params = {
         {Low_Mid_Crossover_Freq, "Low-Mid Crossover Freq"},
         {Mid_High_Crossover_Freq, "Mid-High Crossover Freq"},
         {Threshold_Low_Band, "Threshold Low Band"},
@@ -73,13 +72,14 @@ inline const std::map<Names, juce::String>& GetParams()
         {Solo_Low_Band, "Solo Low Band"},
         {Solo_Mid_Band, "Solo Mid Band"},
         {Solo_High_Band, "Solo High Band"},
+        {Gain_In, "Gain In"},
+        {Gain_Out, "Gain Out"}
     };
     return params;
 }
 }
 
-struct CompressorBand
-{
+struct CompressorBand {
     juce::AudioParameterFloat* attack { nullptr };
     juce::AudioParameterFloat* release { nullptr };
     juce::AudioParameterFloat* threshold { nullptr };
@@ -88,19 +88,16 @@ struct CompressorBand
     juce::AudioParameterBool* mute { nullptr };
     juce::AudioParameterBool* solo { nullptr };
     
-    void prepare(const juce::dsp::ProcessSpec& spec)
-    {
+    void prepare(const juce::dsp::ProcessSpec& spec) {
         compressor.prepare(spec);
     }
-    void updateCompressorSettings()
-    {
+    void updateCompressorSettings() {
         compressor.setAttack(attack->get());
         compressor.setRelease(release->get());
         compressor.setThreshold(threshold->get());
         compressor.setRatio(ratio->getCurrentChoiceName().getFloatValue());
     }
-    void process(juce::AudioBuffer<float>& buffer)
-    {
+    void process(juce::AudioBuffer<float>& buffer) {
         auto block = juce::dsp::AudioBlock<float>(buffer);
         auto context = juce::dsp::ProcessContextReplacing<float>(block);
         context.isBypassed = bypassed->get();
@@ -111,8 +108,7 @@ private:
     juce::dsp::Compressor<float> compressor;
 };
 
-class MBCompAudioProcessor  : public juce::AudioProcessor
-{
+class MBCompAudioProcessor  : public juce::AudioProcessor {
 public:
     //==============================================================================
     MBCompAudioProcessor();
@@ -170,6 +166,20 @@ private:
     juce::AudioParameterFloat* midHighCrossover { nullptr };
 
     std::array<juce::AudioBuffer<float>, 3> filterBuffers;
+    
+    juce::dsp::Gain<float> inputGain, outputGain;
+    juce::AudioParameterFloat* inputGainParam { nullptr };
+    juce::AudioParameterFloat* outputGainParam { nullptr };
+    
+    template<typename T, typename U>
+    void applyGain(T& buffer, U& gain) {
+        auto block = juce::dsp::AudioBlock<float>(buffer);
+        auto ctx = juce::dsp::ProcessContextReplacing<float>(block);
+        gain.process(ctx);
+    }
+    
+    void updateState();
+    void splitBands(const juce::AudioBuffer<float>& inputBuffer);
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MBCompAudioProcessor)
 };
